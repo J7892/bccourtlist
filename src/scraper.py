@@ -151,11 +151,12 @@ def save_appearances_to_db(conn, table_name, records, is_completed=False, source
 
     if table_name == "appearances":
         for r in records:
+            # Match existing appearance on core primary keys (court_level, court_name, court_date, file_number, cnt)
             cur.execute("""
-                SELECT id, result, disposition, status FROM appearances
+                SELECT id, room, rsn, result, disposition, status FROM appearances
                 WHERE court_level = ? AND court_name = ? AND court_date = ? 
-                  AND file_number = ? AND cnt = ? AND rsn = ? AND room = ?
-            """, (r['court_level'], r['court_name'], r['court_date'], r['file_number'], r['cnt'], r['rsn'], r['room']))
+                  AND file_number = ? AND cnt = ?
+            """, (r['court_level'], r['court_name'], r['court_date'], r['file_number'], r['cnt']))
             existing = cur.fetchone()
 
             if existing:
