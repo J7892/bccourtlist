@@ -17,6 +17,12 @@
     .table th { background-color: #f1f5f9; font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px; }
     .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.85rem; }
     .court-tag { font-size: 0.75rem; border-radius: 4px; padding: 2px 6px; }
+    .btn-track { border: none; background: transparent; padding: 2px 5px; color: #94a3b8; transition: color 0.15s ease; }
+    .btn-track:hover, .btn-track.active { color: #f59e0b; }
+    .btn-share { border: none; background: transparent; padding: 2px 5px; color: #94a3b8; transition: color 0.15s ease; }
+    .btn-share:hover { color: #2563eb; }
+    .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: #2563eb; display: inline-block; margin-right: 8px; }
+    .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1060; }
   </style>
 </head>
 <body>
@@ -41,8 +47,14 @@
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link fw-bold" id="advance-tab" data-bs-toggle="pill" data-bs-target="#tab-advance" type="button" role="tab" onclick="switchDataset('advance')">
-        <i class="bi bi-clock-history me-1"></i> Advanced Scheduled Appearances (Next 5 Days)
+        <i class="bi bi-clock-history me-1"></i> Advanced Scheduled (Next 5 Days)
         <span class="badge bg-light text-dark ms-1" id="advanceCount">0</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link fw-bold" id="watchlist-tab" data-bs-toggle="pill" data-bs-target="#tab-watchlist" type="button" role="tab" onclick="switchDataset('watchlist')">
+        <i class="bi bi-star-fill text-warning me-1"></i> My Tracked Cases
+        <span class="badge bg-warning text-dark ms-1" id="watchlistCount">0</span>
       </button>
     </li>
   </ul>
@@ -54,7 +66,7 @@
         <label class="form-label small fw-semibold text-secondary">Search (Name, File #, Charge)</label>
         <div class="input-group input-group-sm">
           <span class="input-group-text"><i class="bi bi-search"></i></span>
-          <input type="text" id="searchInput" class="form-control" placeholder="Search keywords..." oninput="applyFilters()">
+          <input type="text" id="searchInput" class="form-control" placeholder="Search keywords..." oninput="onSearchInput()">
         </div>
       </div>
       <div class="col-md-2">
@@ -92,12 +104,22 @@
     </div>
   </div>
 
+  <!-- Deep Link Banner if active -->
+  <div id="filterBanner" class="alert alert-primary py-2 px-3 d-flex justify-content-between align-items-center mb-3 d-none">
+    <div class="small">
+      <i class="bi bi-link-45deg me-1"></i> Viewing shared link for: <strong id="filterBannerText"></strong>
+    </div>
+    <button class="btn btn-sm btn-link text-decoration-none p-0 text-primary" onclick="clearDeepLink()">Show all cases</button>
+  </div>
+
   <!-- Legend quick modal trigger & info -->
   <div class="d-flex justify-content-between align-items-center mb-2 px-1">
     <div class="small text-muted" id="showingCount">Showing 0 entries</div>
-    <button class="btn btn-sm btn-link text-decoration-none text-muted" data-bs-toggle="modal" data-bs-target="#legendModal">
-      <i class="bi bi-question-circle me-1"></i>Column Acronyms & Legend
-    </button>
+    <div>
+      <button class="btn btn-sm btn-link text-decoration-none text-muted" data-bs-toggle="modal" data-bs-target="#legendModal">
+        <i class="bi bi-question-circle me-1"></i>Column Acronyms & Legend
+      </button>
+    </div>
   </div>
 
   <!-- Results Table -->
@@ -108,7 +130,7 @@
       </thead>
       <tbody id="tableBody">
         <tr>
-          <td colspan="12" class="text-center py-4 text-muted">Loading court records...</td>
+          <td colspan="14" class="text-center py-4 text-muted">Loading court records...</td>
         </tr>
       </tbody>
     </table>
@@ -120,6 +142,16 @@
     <div class="btn-group btn-group-sm">
       <button class="btn btn-outline-secondary" id="prevPageBtn" onclick="changePage(-1)">Previous</button>
       <button class="btn btn-outline-secondary" id="nextPageBtn" onclick="changePage(1)">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast for copied links & tracking -->
+<div class="toast-container">
+  <div id="liveToast" class="toast align-items-center text-white bg-dark border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toastMessage">Action completed</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
     </div>
   </div>
 </div>
@@ -173,6 +205,50 @@
   let currentPage = 1;
   const pageSize = 50;
 
+  // Tracked Cases stored in LocalStorage
+  let trackedFiles = new Set(JSON.parse(localStorage.getItem('tracked_court_files') || '[]'));
+
+  function showToast(msg) {
+    document.getElementById('toastMessage').innerText = msg;
+    const toastEl = document.getElementById('liveToast');
+    const toast = new bootstrap.Toast(toastEl, { delay: 2500 });
+    toast.show();
+  }
+
+  function toggleTrackCase(fileNo) {
+    if (!fileNo) return;
+    if (trackedFiles.has(fileNo)) {
+      trackedFiles.delete(fileNo);
+      showToast(`Removed case ${fileNo} from watchlist.`);
+    } else {
+      trackedFiles.add(fileNo);
+      showToast(`Added case ${fileNo} to watchlist ⭐`);
+    }
+    localStorage.setItem('tracked_court_files', JSON.stringify(Array.from(trackedFiles)));
+    updateWatchlistBadge();
+
+    if (currentDataset === 'watchlist') {
+      applyFilters();
+    } else {
+      renderTable();
+    }
+  }
+
+  function copyCaseLink(fileNo) {
+    if (!fileNo) return;
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('file', fileNo);
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      showToast(`Direct link for case ${fileNo} copied to clipboard!`);
+    }).catch(() => {
+      prompt("Copy direct link:", url.toString());
+    });
+  }
+
+  function updateWatchlistBadge() {
+    document.getElementById('watchlistCount').innerText = trackedFiles.size.toString();
+  }
+
   async function loadData() {
     try {
       const [resDaily, resAdv] = await Promise.all([
@@ -190,13 +266,51 @@
       document.getElementById('dailyCount').innerText = dailyData.length.toLocaleString();
       document.getElementById('advanceCount').innerText = advanceData.length.toLocaleString();
       document.getElementById('lastUpdatedTime').innerText = `Loaded ${dailyData.length + advanceData.length} records`;
+      updateWatchlistBadge();
 
       populateCourtFilter();
+
+      // Check URL parameters for deep linking
+      const params = new URLSearchParams(window.location.search);
+      const fileParam = params.get('file');
+      const nameParam = params.get('name');
+
+      if (fileParam) {
+        document.getElementById('searchInput').value = fileParam;
+        document.getElementById('filterBannerText').innerText = `File #${fileParam}`;
+        document.getElementById('filterBanner').classList.remove('d-none');
+      } else if (nameParam) {
+        document.getElementById('searchInput').value = nameParam;
+        document.getElementById('filterBannerText').innerText = `Name: "${nameParam}"`;
+        document.getElementById('filterBanner').classList.remove('d-none');
+      }
+
       switchDataset('daily');
     } catch (err) {
       console.error('Error loading datasets:', err);
-      document.getElementById('tableBody').innerHTML = `<tr><td colspan="12" class="text-center text-danger py-4">Error loading data files. Please run the scraper pipeline.</td></tr>`;
+      document.getElementById('tableBody').innerHTML = `<tr><td colspan="14" class="text-center text-danger py-4">Error loading data files. Please run the scraper pipeline.</td></tr>`;
     }
+  }
+
+  function clearDeepLink() {
+    document.getElementById('filterBanner').classList.add('d-none');
+    document.getElementById('searchInput').value = '';
+    const url = new URL(window.location.origin + window.location.pathname);
+    window.history.replaceState({}, '', url.toString());
+    applyFilters();
+  }
+
+  function onSearchInput() {
+    const val = document.getElementById('searchInput').value.trim();
+    const url = new URL(window.location.origin + window.location.pathname);
+    if (val) {
+      url.searchParams.set('file', val);
+    } else {
+      url.searchParams.delete('file');
+      document.getElementById('filterBanner').classList.add('d-none');
+    }
+    window.history.replaceState({}, '', url.toString());
+    applyFilters();
   }
 
   function populateCourtFilter() {
@@ -217,7 +331,13 @@
   function switchDataset(type) {
     currentDataset = type;
     currentPage = 1;
-    const isDaily = type === 'daily';
+
+    // Update active tab buttons
+    document.getElementById('daily-tab').classList.toggle('active', type === 'daily');
+    document.getElementById('advance-tab').classList.toggle('active', type === 'advance');
+    document.getElementById('watchlist-tab').classList.toggle('active', type === 'watchlist');
+
+    const isDaily = (type === 'daily' || type === 'watchlist');
     document.getElementById('statusFilterContainer').style.display = isDaily ? 'block' : 'none';
 
     renderTableHeader();
@@ -226,43 +346,24 @@
 
   function renderTableHeader() {
     const head = document.getElementById('tableHead');
-    if (currentDataset === 'daily') {
-      head.innerHTML = `
-        <tr>
-          <th>Date</th>
-          <th>Court</th>
-          <th>Rm</th>
-          <th>Time</th>
-          <th>File Number</th>
-          <th>Name</th>
-          <th>Proc</th>
-          <th>I/C</th>
-          <th>Cnt</th>
-          <th>Charge</th>
-          <th>Result / Next</th>
-          <th>Disposition</th>
-          <th>Status</th>
-        </tr>
-      `;
-    } else {
-      head.innerHTML = `
-        <tr>
-          <th>Date</th>
-          <th>Court</th>
-          <th>Rm</th>
-          <th>Time</th>
-          <th>File Number</th>
-          <th>Name</th>
-          <th>Proc</th>
-          <th>I/C</th>
-          <th>Counsel</th>
-          <th>Rsn</th>
-          <th>Cnt</th>
-          <th>Charge</th>
-          <th>Offence Location</th>
-        </tr>
-      `;
-    }
+    head.innerHTML = `
+      <tr>
+        <th style="width: 75px;">Actions</th>
+        <th>Date</th>
+        <th>Court</th>
+        <th>Rm</th>
+        <th>Time</th>
+        <th>File Number</th>
+        <th>Name</th>
+        <th>Proc</th>
+        <th>I/C</th>
+        <th>Cnt</th>
+        <th>Charge</th>
+        <th>${currentDataset === 'advance' ? 'Offence Location' : 'Result / Next'}</th>
+        <th>${currentDataset === 'advance' ? 'Counsel' : 'Disposition'}</th>
+        <th>Status</th>
+      </tr>
+    `;
   }
 
   function applyFilters() {
@@ -272,12 +373,20 @@
     const status = document.getElementById('statusFilter').value;
     const courtDate = document.getElementById('dateFilter').value.toLowerCase().trim();
 
-    const data = currentDataset === 'daily' ? dailyData : advanceData;
+    let data = [];
+    if (currentDataset === 'daily') {
+      data = dailyData;
+    } else if (currentDataset === 'advance') {
+      data = advanceData;
+    } else if (currentDataset === 'watchlist') {
+      // Merge all appearances that match tracked files
+      data = [...dailyData, ...advanceData].filter(r => trackedFiles.has(r.file_number));
+    }
 
     filteredData = data.filter(r => {
       if (courtLevel && r.court_level !== courtLevel) return false;
       if (courtName && r.court_name !== courtName) return false;
-      if (currentDataset === 'daily' && status && r.status !== status) return false;
+      if (status && (r.status || 'Scheduled') !== status) return false;
       if (courtDate && !(r.court_date || '').toLowerCase().includes(courtDate)) return false;
 
       if (query) {
@@ -297,7 +406,14 @@
     document.getElementById('showingCount').innerText = `Showing ${Math.min(total, (currentPage - 1) * pageSize + 1)} - ${Math.min(total, currentPage * pageSize)} of ${total} entries`;
 
     if (total === 0) {
-      tbody.innerHTML = `<tr><td colspan="13" class="text-center py-4 text-muted">No records match your filters.</td></tr>`;
+      if (currentDataset === 'watchlist' && trackedFiles.size === 0) {
+        tbody.innerHTML = `<tr><td colspan="14" class="text-center py-5 text-muted">
+          <i class="bi bi-star fs-3 d-block mb-2 text-warning"></i>
+          You have no tracked cases yet.<br>Click the <i class="bi bi-star text-warning"></i> icon on any case in the Daily or Advance tabs to add it to your watchlist.
+        </td></tr>`;
+      } else {
+        tbody.innerHTML = `<tr><td colspan="14" class="text-center py-4 text-muted">No records match your filters.</td></tr>`;
+      }
       document.getElementById('pageInfo').innerText = 'Page 0 of 0';
       document.getElementById('prevPageBtn').disabled = true;
       document.getElementById('nextPageBtn').disabled = true;
@@ -310,47 +426,42 @@
 
     let html = '';
     for (const r of pageRecords) {
-      if (currentDataset === 'daily') {
-        const badgeClass = r.status === 'Completed' ? 'badge-completed' : (r.status === 'Adjourned' ? 'badge-adjourned' : 'badge-scheduled');
-        html += `
-          <tr>
-            <td class="text-nowrap">${r.court_date || '-'}</td>
-            <td class="text-nowrap"><span class="badge bg-light text-dark border court-tag">${r.court_level}</span> ${r.court_name}</td>
-            <td class="mono">${r.room || '-'}</td>
-            <td class="text-nowrap">${r.session_time || '-'}</td>
-            <td class="mono fw-bold">${r.file_number}</td>
-            <td class="fw-semibold">${r.name}</td>
-            <td class="mono small">${r.proc || '-'}</td>
-            <td class="mono small">${r.ic || '-'}</td>
-            <td class="mono small">${r.cnt || '-'}</td>
-            <td class="small" style="max-width: 250px;">${r.charge_description || '-'}</td>
-            <td class="small">
-              ${r.result ? `<span class="badge bg-secondary">${r.result}</span>` : ''}
-              ${r.next_appearance ? `<div class="text-muted" style="font-size:0.75rem;">${r.next_appearance}</div>` : ''}
-            </td>
-            <td class="small fw-semibold text-danger">${r.disposition || '-'}</td>
-            <td><span class="badge ${badgeClass}">${r.status}</span></td>
-          </tr>
-        `;
-      } else {
-        html += `
-          <tr>
-            <td class="text-nowrap">${r.court_date || '-'}</td>
-            <td class="text-nowrap"><span class="badge bg-light text-dark border court-tag">${r.court_level}</span> ${r.court_name}</td>
-            <td class="mono">${r.room || '-'}</td>
-            <td class="text-nowrap">${r.session_time || '-'}</td>
-            <td class="mono fw-bold">${r.file_number}</td>
-            <td class="fw-semibold">${r.name}</td>
-            <td class="mono small">${r.proc || '-'}</td>
-            <td class="mono small">${r.ic || '-'}</td>
-            <td class="small">${r.counsel || '-'}</td>
-            <td class="mono small">${r.rsn || '-'}</td>
-            <td class="mono small">${r.cnt || '-'}</td>
-            <td class="small" style="max-width: 300px;">${r.charge_description || '-'}</td>
-            <td class="small text-muted">${r.location_of_offence || '-'}</td>
-          </tr>
-        `;
-      }
+      const isTracked = trackedFiles.has(r.file_number);
+      const starIcon = isTracked ? 'bi-star-fill text-warning' : 'bi-star text-secondary';
+      const badgeClass = r.status === 'Completed' ? 'badge-completed' : (r.status === 'Adjourned' ? 'badge-adjourned' : 'badge-scheduled');
+
+      html += `
+        <tr>
+          <td class="text-nowrap">
+            <button class="btn-track ${isTracked ? 'active' : ''}" onclick="toggleTrackCase('${r.file_number}')" title="${isTracked ? 'Untrack case' : 'Track case'}">
+              <i class="bi ${starIcon}"></i>
+            </button>
+            <button class="btn-share" onclick="copyCaseLink('${r.file_number}')" title="Copy shareable case link">
+              <i class="bi bi-link-45deg"></i>
+            </button>
+          </td>
+          <td class="text-nowrap">${r.court_date || '-'}</td>
+          <td class="text-nowrap"><span class="badge bg-light text-dark border court-tag">${r.court_level}</span> ${r.court_name}</td>
+          <td class="mono">${r.room || '-'}</td>
+          <td class="text-nowrap">${r.session_time || '-'}</td>
+          <td class="mono fw-bold">${r.file_number}</td>
+          <td class="fw-semibold">${r.name}</td>
+          <td class="mono small">${r.proc || '-'}</td>
+          <td class="mono small">${r.ic || '-'}</td>
+          <td class="mono small">${r.cnt || '-'}</td>
+          <td class="small" style="max-width: 250px;">${r.charge_description || '-'}</td>
+          <td class="small">
+            ${currentDataset === 'advance' ? (r.location_of_offence || '-') : (
+              (r.result ? `<span class="badge bg-secondary">${r.result}</span>` : '') +
+              (r.next_appearance ? `<div class="text-muted" style="font-size:0.75rem;">${r.next_appearance}</div>` : '')
+            )}
+          </td>
+          <td class="small ${currentDataset === 'advance' ? '' : 'fw-semibold text-danger'}">
+            ${currentDataset === 'advance' ? (r.counsel || '-') : (r.disposition || '-')}
+          </td>
+          <td><span class="badge ${badgeClass}">${r.status || 'Scheduled'}</span></td>
+        </tr>
+      `;
     }
     tbody.innerHTML = html;
 
@@ -371,7 +482,7 @@
     document.getElementById('courtNameFilter').value = '';
     document.getElementById('statusFilter').value = '';
     document.getElementById('dateFilter').value = '';
-    applyFilters();
+    clearDeepLink();
   }
 
   window.addEventListener('DOMContentLoaded', loadData);
