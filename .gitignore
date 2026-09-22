@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.tmp
+data/raw_pdf/
+court_data.db-journal

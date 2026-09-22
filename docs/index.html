@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BC Criminal Court List Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 0.9rem; }
+    .navbar { background: linear-gradient(135deg, #1e3a8a, #0f172a); }
+    .badge-scheduled { background-color: #0284c7; }
+    .badge-completed { background-color: #16a34a; }
+    .badge-adjourned { background-color: #d97706; }
+    .table-container { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto; }
+    .card-filter { border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .table th { background-color: #f1f5f9; font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.85rem; }
+    .court-tag { font-size: 0.75rem; border-radius: 4px; padding: 2px 6px; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark mb-4 py-3 shadow-sm">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand mb-0 h1 fs-5">
+      <i class="bi bi-bank2 me-2"></i>BC Criminal Court Appearance Dashboard
+    </span>
+    <span class="text-light opacity-75 small" id="lastUpdatedTime">Loading dataset...</span>
+  </div>
+</nav>
+
+<div class="container-fluid px-4 pb-5">
+  <!-- Nav Tabs -->
+  <ul class="nav nav-pills mb-3" id="datasetTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active fw-bold" id="daily-tab" data-bs-toggle="pill" data-bs-target="#tab-daily" type="button" role="tab" onclick="switchDataset('daily')">
+        <i class="bi bi-calendar-event me-1"></i> Daily & Completed Appearances
+        <span class="badge bg-light text-dark ms-1" id="dailyCount">0</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link fw-bold" id="advance-tab" data-bs-toggle="pill" data-bs-target="#tab-advance" type="button" role="tab" onclick="switchDataset('advance')">
+        <i class="bi bi-clock-history me-1"></i> Advanced Scheduled Appearances (Next 5 Days)
+        <span class="badge bg-light text-dark ms-1" id="advanceCount">0</span>
+      </button>
+    </li>
+  </ul>
+
+  <!-- Filter Card -->
+  <div class="card card-filter mb-4 p-3 bg-white">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold text-secondary">Search (Name, File #, Charge)</label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" id="searchInput" class="form-control" placeholder="Search keywords..." oninput="applyFilters()">
+        </div>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-semibold text-secondary">Court Level</label>
+        <select id="courtLevelFilter" class="form-select form-select-sm" onchange="applyFilters()">
+          <option value="">All Levels</option>
+          <option value="Provincial">Provincial Court</option>
+          <option value="Supreme">Supreme Court</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-semibold text-secondary">Location / Court</label>
+        <select id="courtNameFilter" class="form-select form-select-sm" onchange="applyFilters()">
+          <option value="">All Courts</option>
+        </select>
+      </div>
+      <div class="col-md-2" id="statusFilterContainer">
+        <label class="form-label small fw-semibold text-secondary">Status</label>
+        <select id="statusFilter" class="form-select form-select-sm" onchange="applyFilters()">
+          <option value="">All Statuses</option>
+          <option value="Scheduled">Scheduled</option>
+          <option value="Completed">Completed (Disposition)</option>
+          <option value="Adjourned">Adjourned</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-semibold text-secondary">Court Date</label>
+        <input type="text" id="dateFilter" class="form-control form-control-sm" placeholder="e.g. 22-SEP-2026" oninput="applyFilters()">
+      </div>
+      <div class="col-md-1 text-end">
+        <button class="btn btn-sm btn-outline-secondary w-100" onclick="resetFilters()">
+          <i class="bi bi-x-circle me-1"></i>Reset
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend quick modal trigger & info -->
+  <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+    <div class="small text-muted" id="showingCount">Showing 0 entries</div>
+    <button class="btn btn-sm btn-link text-decoration-none text-muted" data-bs-toggle="modal" data-bs-target="#legendModal">
+      <i class="bi bi-question-circle me-1"></i>Column Acronyms & Legend
+    </button>
+  </div>
+
+  <!-- Results Table -->
+  <div class="table-container p-0">
+    <table class="table table-hover table-striped align-middle mb-0" id="resultsTable">
+      <thead id="tableHead">
+        <!-- Dynamically rendered header -->
+      </thead>
+      <tbody id="tableBody">
+        <tr>
+          <td colspan="12" class="text-center py-4 text-muted">Loading court records...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <div class="d-flex justify-content-between align-items-center mt-3">
+    <div class="small text-muted" id="pageInfo">Page 1</div>
+    <div class="btn-group btn-group-sm">
+      <button class="btn btn-outline-secondary" id="prevPageBtn" onclick="changePage(-1)">Previous</button>
+      <button class="btn btn-outline-secondary" id="nextPageBtn" onclick="changePage(1)">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- Legend Modal -->
+<div class="modal fade" id="legendModal" tabindex="-1" aria-labelledby="legendModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="legendModalLabel"><i class="bi bi-info-circle me-2"></i>Court List Legend & Column Meanings</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body small">
+        <p class="text-muted">Definitions based on the official BC Ministry of Attorney General Criminal Court Lists guide:</p>
+        <div class="row">
+          <div class="col-md-6">
+            <h6>Common Columns</h6>
+            <ul class="list-group list-group-flush mb-3">
+              <li class="list-group-item"><strong>Rm:</strong> Courtroom number</li>
+              <li class="list-group-item"><strong>File Number:</strong> Court file registry number</li>
+              <li class="list-group-item"><strong>Proc (Bail Process):</strong> Bail status (WAR = Warrant, UTP = Undertaking, SUM = Summons)</li>
+              <li class="list-group-item"><strong>I/C:</strong> In Custody status (Y = In Custody, N = Out of Custody)</li>
+              <li class="list-group-item"><strong>Cnt:</strong> Count / charge sequence number</li>
+              <li class="list-group-item"><strong>Rsn:</strong> Purpose/Reason (FA = First Appearance, PAR = Pre-Trial, SNT = Sentence)</li>
+            </ul>
+          </div>
+          <div class="col-md-6">
+            <h6>Outcomes & Results</h6>
+            <ul class="list-group list-group-flush mb-3">
+              <li class="list-group-item"><strong>Rslt:</strong> IBJ = In Between Judgment / Adjourned, END = Concluded</li>
+              <li class="list-group-item"><strong>Disposition:</strong> Final result: SOP = Stay of Proceedings, APG = Admitted Guilty, PNI = Not Guilty plea</li>
+              <li class="list-group-item"><strong>V/C:</strong> By Videoconference (CON = Video link, ACC = Accused on video)</li>
+              <li class="list-group-item"><strong>Agency File:</strong> Police agency code and investigation incident number</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  let dailyData = [];
+  let advanceData = [];
+  let currentDataset = 'daily';
+  let filteredData = [];
+  let currentPage = 1;
+  const pageSize = 50;
+
+  async function loadData() {
+    try {
+      const [resDaily, resAdv] = await Promise.all([
+        fetch('data/daily_court_lists.json').catch(() => null),
+        fetch('data/advanced_lists.json').catch(() => null)
+      ]);
+
+      if (resDaily && resDaily.ok) {
+        dailyData = await resDaily.json();
+      }
+      if (resAdv && resAdv.ok) {
+        advanceData = await resAdv.json();
+      }
+
+      document.getElementById('dailyCount').innerText = dailyData.length.toLocaleString();
+      document.getElementById('advanceCount').innerText = advanceData.length.toLocaleString();
+      document.getElementById('lastUpdatedTime').innerText = `Loaded ${dailyData.length + advanceData.length} records`;
+
+      populateCourtFilter();
+      switchDataset('daily');
+    } catch (err) {
+      console.error('Error loading datasets:', err);
+      document.getElementById('tableBody').innerHTML = `<tr><td colspan="12" class="text-center text-danger py-4">Error loading data files. Please run the scraper pipeline.</td></tr>`;
+    }
+  }
+
+  function populateCourtFilter() {
+    const allCourts = new Set();
+    dailyData.forEach(d => d.court_name && allCourts.add(d.court_name));
+    advanceData.forEach(d => d.court_name && allCourts.add(d.court_name));
+
+    const select = document.getElementById('courtNameFilter');
+    select.innerHTML = '<option value="">All Courts</option>';
+    Array.from(allCourts).sort().forEach(court => {
+      const opt = document.createElement('option');
+      opt.value = court;
+      opt.innerText = court;
+      select.appendChild(opt);
+    });
+  }
+
+  function switchDataset(type) {
+    currentDataset = type;
+    currentPage = 1;
+    const isDaily = type === 'daily';
+    document.getElementById('statusFilterContainer').style.display = isDaily ? 'block' : 'none';
+
+    renderTableHeader();
+    applyFilters();
+  }
+
+  function renderTableHeader() {
+    const head = document.getElementById('tableHead');
+    if (currentDataset === 'daily') {
+      head.innerHTML = `
+        <tr>
+          <th>Date</th>
+          <th>Court</th>
+          <th>Rm</th>
+          <th>Time</th>
+          <th>File Number</th>
+          <th>Name</th>
+          <th>Proc</th>
+          <th>I/C</th>
+          <th>Cnt</th>
+          <th>Charge</th>
+          <th>Result / Next</th>
+          <th>Disposition</th>
+          <th>Status</th>
+        </tr>
+      `;
+    } else {
+      head.innerHTML = `
+        <tr>
+          <th>Date</th>
+          <th>Court</th>
+          <th>Rm</th>
+          <th>Time</th>
+          <th>File Number</th>
+          <th>Name</th>
+          <th>Proc</th>
+          <th>I/C</th>
+          <th>Counsel</th>
+          <th>Rsn</th>
+          <th>Cnt</th>
+          <th>Charge</th>
+          <th>Offence Location</th>
+        </tr>
+      `;
+    }
+  }
+
+  function applyFilters() {
+    const query = document.getElementById('searchInput').value.toLowerCase().trim();
+    const courtLevel = document.getElementById('courtLevelFilter').value;
+    const courtName = document.getElementById('courtNameFilter').value;
+    const status = document.getElementById('statusFilter').value;
+    const courtDate = document.getElementById('dateFilter').value.toLowerCase().trim();
+
+    const data = currentDataset === 'daily' ? dailyData : advanceData;
+
+    filteredData = data.filter(r => {
+      if (courtLevel && r.court_level !== courtLevel) return false;
+      if (courtName && r.court_name !== courtName) return false;
+      if (currentDataset === 'daily' && status && r.status !== status) return false;
+      if (courtDate && !(r.court_date || '').toLowerCase().includes(courtDate)) return false;
+
+      if (query) {
+        const textBlob = `${r.file_number || ''} ${r.name || ''} ${r.charge_description || ''} ${r.counsel || ''} ${r.disposition || ''}`.toLowerCase();
+        if (!textBlob.includes(query)) return false;
+      }
+      return true;
+    });
+
+    currentPage = 1;
+    renderTable();
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById('tableBody');
+    const total = filteredData.length;
+    document.getElementById('showingCount').innerText = `Showing ${Math.min(total, (currentPage - 1) * pageSize + 1)} - ${Math.min(total, currentPage * pageSize)} of ${total} entries`;
+
+    if (total === 0) {
+      tbody.innerHTML = `<tr><td colspan="13" class="text-center py-4 text-muted">No records match your filters.</td></tr>`;
+      document.getElementById('pageInfo').innerText = 'Page 0 of 0';
+      document.getElementById('prevPageBtn').disabled = true;
+      document.getElementById('nextPageBtn').disabled = true;
+      return;
+    }
+
+    const start = (currentPage - 1) * pageSize;
+    const end = Math.min(start + pageSize, total);
+    const pageRecords = filteredData.slice(start, end);
+
+    let html = '';
+    for (const r of pageRecords) {
+      if (currentDataset === 'daily') {
+        const badgeClass = r.status === 'Completed' ? 'badge-completed' : (r.status === 'Adjourned' ? 'badge-adjourned' : 'badge-scheduled');
+        html += `
+          <tr>
+            <td class="text-nowrap">${r.court_date || '-'}</td>
+            <td class="text-nowrap"><span class="badge bg-light text-dark border court-tag">${r.court_level}</span> ${r.court_name}</td>
+            <td class="mono">${r.room || '-'}</td>
+            <td class="text-nowrap">${r.session_time || '-'}</td>
+            <td class="mono fw-bold">${r.file_number}</td>
+            <td class="fw-semibold">${r.name}</td>
+            <td class="mono small">${r.proc || '-'}</td>
+            <td class="mono small">${r.ic || '-'}</td>
+            <td class="mono small">${r.cnt || '-'}</td>
+            <td class="small" style="max-width: 250px;">${r.charge_description || '-'}</td>
+            <td class="small">
+              ${r.result ? `<span class="badge bg-secondary">${r.result}</span>` : ''}
+              ${r.next_appearance ? `<div class="text-muted" style="font-size:0.75rem;">${r.next_appearance}</div>` : ''}
+            </td>
+            <td class="small fw-semibold text-danger">${r.disposition || '-'}</td>
+            <td><span class="badge ${badgeClass}">${r.status}</span></td>
+          </tr>
+        `;
+      } else {
+        html += `
+          <tr>
+            <td class="text-nowrap">${r.court_date || '-'}</td>
+            <td class="text-nowrap"><span class="badge bg-light text-dark border court-tag">${r.court_level}</span> ${r.court_name}</td>
+            <td class="mono">${r.room || '-'}</td>
+            <td class="text-nowrap">${r.session_time || '-'}</td>
+            <td class="mono fw-bold">${r.file_number}</td>
+            <td class="fw-semibold">${r.name}</td>
+            <td class="mono small">${r.proc || '-'}</td>
+            <td class="mono small">${r.ic || '-'}</td>
+            <td class="small">${r.counsel || '-'}</td>
+            <td class="mono small">${r.rsn || '-'}</td>
+            <td class="mono small">${r.cnt || '-'}</td>
+            <td class="small" style="max-width: 300px;">${r.charge_description || '-'}</td>
+            <td class="small text-muted">${r.location_of_offence || '-'}</td>
+          </tr>
+        `;
+      }
+    }
+    tbody.innerHTML = html;
+
+    const totalPages = Math.ceil(total / pageSize);
+    document.getElementById('pageInfo').innerText = `Page ${currentPage} of ${totalPages}`;
+    document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+    document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+  }
+
+  function changePage(delta) {
+    currentPage += delta;
+    renderTable();
+  }
+
+  function resetFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('courtLevelFilter').value = '';
+    document.getElementById('courtNameFilter').value = '';
+    document.getElementById('statusFilter').value = '';
+    document.getElementById('dateFilter').value = '';
+    applyFilters();
+  }
+
+  window.addEventListener('DOMContentLoaded', loadData);
+</script>
+</body>
+</html>
