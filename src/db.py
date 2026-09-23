@@ -125,6 +125,47 @@ def record_processed_file(conn, category, court_name, filename, file_url, sha256
     """, (category, court_name, filename, file_url, sha256, report_id, report_date, court_date, count))
     conn.commit()
 
+def purge_expired_advanced_appearances(conn, baseline_date=None):
+    """
+    Purges past dates from advanced_appearances so it stays a lean 5-day rolling window.
+    Keeps today and upcoming scheduled days.
+    """
+    from datetime import datetime, timedelta
+    cur = conn.cursor()
+    # Find all distinct dates in advanced_appearances
+    cur.execute("SELECT DISTINCT court_date FROM advanced_appearances WHERE court_date IS NOT NULL AND court_date != ''")
+    dates = [r['court_date'] for r in cur.fetchall()]
+    
+    parsed_dates = []
+    for d in dates:
+        try:
+            parsed_dates.append((d, datetime.strptime(d.strip().upper(), "%d-%b-%Y")))
+        except Exception:
+            pass
+
+    if parsed_dates:
+        # Determine baseline date (or use today's date if provided)
+        if not baseline_date:
+            # Also check appearances for the latest daily docket date
+            cur.execute("SELECT DISTINCT court_date FROM appearances WHERE court_date IS NOT NULL AND court_date != ''")
+            app_dates = [r['court_date'] for r in cur.fetchall()]
+            for d in app_dates:
+                try:
+                    parsed_dates.append((d, datetime.strptime(d.strip().upper(), "%d-%b-%Y")))
+                except Exception:
+                    pass
+            base_dt = max(p[1] for p in parsed_dates)
+        else:
+            base_dt = baseline_date
+
+        # Purge anything strictly older than base_dt
+        expired = [p[0] for p in parsed_dates if p[1] < base_dt]
+        if expired:
+            placeholders = ",".join("?" for _ in expired)
+            cur.execute(f"DELETE FROM advanced_appearances WHERE court_date IN ({placeholders})", expired)
+            conn.commit()
+
 if __name__ == "__main__":
     init_db()
     print("Database initialized successfully at", DEFAULT_DB_PATH)
+

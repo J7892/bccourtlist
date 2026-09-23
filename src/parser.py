@@ -72,16 +72,19 @@ def parse_provincial_daily_or_advance(pdf_bytes, filename=""):
         metadata['total_pages'] = len(pdf.pages)
         for page in pdf.pages:
             raw_text = page.extract_text() or ""
+            page_court_date = metadata['court_date']
             
             # Extract header metadata
             for line in raw_text.splitlines():
                 if "Court Date:" in line:
                     m_date = re.search(r"Court Date:\s*([0-9A-Za-z-]+)", line)
-                    if m_date and not metadata['court_date']:
-                        metadata['court_date'] = m_date.group(1).strip()
+                    if m_date:
+                        page_court_date = m_date.group(1).strip()
+                        if not metadata['court_date']:
+                            metadata['court_date'] = page_court_date
                 if "Report ID:" in line:
                     m_rep = re.search(r"Report ID:\s*([^\s]+)\s+Report Date:\s*(.+)", line)
-                    if m_rep:
+                    if m_rep and not metadata['report_id']:
                         metadata['report_id'] = m_rep.group(1).strip()
                         metadata['report_date'] = m_rep.group(2).strip()
 
@@ -148,7 +151,7 @@ def parse_provincial_daily_or_advance(pdf_bytes, filename=""):
                         'court_level': 'Provincial',
                         'court_name': clean_court_name_from_filename(filename) if filename else metadata['court_name'],
                         'room': current_room,
-                        'court_date': metadata['court_date'],
+                        'court_date': page_court_date,
                         'session_time': current_session,
                         'item_no': cols['item_no'] or (current_rec['item_no'] if current_rec else ""),
                         'file_number': file_to_use,

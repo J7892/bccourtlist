@@ -27,7 +27,7 @@ import urllib.request
 from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from src.db import init_db, get_connection, is_file_already_processed, record_processed_file
+from src.db import init_db, get_connection, is_file_already_processed, record_processed_file, purge_expired_advanced_appearances
 from src.parser import parse_provincial_daily_or_advance, parse_supreme_daily, parse_completed_list
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -214,17 +214,22 @@ def save_appearances_to_db(conn, table_name, records, is_completed=False, source
 
     return saved, updated
 
-def export_data_files(conn, output_dir):
+def export_data_files(conn, output_dir, days_window=30):
+    from datetime import datetime, timedelta
     os.makedirs(output_dir, exist_ok=True)
     cur = conn.cursor()
 
-    # 1. Export Advanced appearances to separate files
+    # 1. Purge expired dates from advanced_appearances so it stays a 5-day snapshot
+    purge_expired_advanced_appearances(conn)
+
+    # 2. Export Advanced appearances (compact JSON + CSV)
     cur.execute("SELECT * FROM advanced_appearances ORDER BY court_date, court_name, file_number")
     adv_rows = [dict(row) for row in cur.fetchall()]
     
     adv_json_path = os.path.join(output_dir, "advanced_lists.json")
     with open(adv_json_path, "w", encoding="utf-8") as f:
-        json.dump(adv_rows, f, indent=2)
+        # Minified JSON eliminates ~30-40% unnecessary whitespace
+        json.dump(adv_rows, f, separators=(',', ':'))
     
     adv_csv_path = os.path.join(output_dir, "advanced_lists.csv")
     if adv_rows:
@@ -233,33 +238,65 @@ def export_data_files(conn, output_dir):
             writer.writeheader()
             writer.writerows(adv_rows)
 
-    # 2. Export Centralized Appearances (Daily & Completed)
+    # 3. Export Centralized Appearances
+    # Full export into CSV for bulk analysis / records
     cur.execute("SELECT * FROM appearances ORDER BY court_date DESC, court_name, file_number")
-    app_rows = [dict(row) for row in cur.fetchall()]
+    all_app_rows = [dict(row) for row in cur.fetchall()]
+
+    app_csv_path = os.path.join(output_dir, "daily_court_lists.csv")
+    if all_app_rows:
+        with open(app_csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=all_app_rows[0].keys())
+            writer.writeheader()
+            writer.writerows(all_app_rows)
+
+    # For JSON (used directly by the browser dashboard):
+    # Keep rolling window (last 30 days of court dates) to keep browser load lightning fast
+    recent_app_rows = []
+    if all_app_rows:
+        parsed_dates = []
+        for r in all_app_rows:
+            d_str = r.get('court_date') or ''
+            try:
+                dt = datetime.strptime(d_str.strip().upper(), "%d-%b-%Y")
+                parsed_dates.append(dt)
+            except Exception:
+                pass
+        
+        if parsed_dates:
+            max_dt = max(parsed_dates)
+            cutoff_dt = max_dt - timedelta(days=days_window)
+            
+            for r in all_app_rows:
+                d_str = r.get('court_date') or ''
+                try:
+                    dt = datetime.strptime(d_str.strip().upper(), "%d-%b-%Y")
+                    if dt >= cutoff_dt:
+                        recent_app_rows.append(r)
+                except Exception:
+                    recent_app_rows.append(r)
+        else:
+            recent_app_rows = all_app_rows
+    else:
+        recent_app_rows = []
 
     app_json_path = os.path.join(output_dir, "daily_court_lists.json")
     with open(app_json_path, "w", encoding="utf-8") as f:
-        json.dump(app_rows, f, indent=2)
+        json.dump(recent_app_rows, f, separators=(',', ':'))
 
-    app_csv_path = os.path.join(output_dir, "daily_court_lists.csv")
-    if app_rows:
-        with open(app_csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=app_rows[0].keys())
-            writer.writeheader()
-            writer.writerows(app_rows)
-
-    # 3. Also sync to docs/data for GitHub Pages hosting
+    # 4. Sync to docs/data for GitHub Pages hosting
     docs_data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "data")
     if os.path.exists(docs_data_dir):
         shutil.copy2(adv_json_path, os.path.join(docs_data_dir, "advanced_lists.json"))
         if adv_rows:
             shutil.copy2(adv_csv_path, os.path.join(docs_data_dir, "advanced_lists.csv"))
         shutil.copy2(app_json_path, os.path.join(docs_data_dir, "daily_court_lists.json"))
-        if app_rows:
+        if all_app_rows:
             shutil.copy2(app_csv_path, os.path.join(docs_data_dir, "daily_court_lists.csv"))
 
-    logging.info(f"Exported {len(adv_rows)} advanced rows to {adv_json_path}")
-    logging.info(f"Exported {len(app_rows)} appearances to {app_json_path}")
+    logging.info(f"Exported {len(adv_rows)} advanced rows (compact JSON) to {adv_json_path}")
+    logging.info(f"Exported {len(recent_app_rows)} recent appearances ({days_window}-day window) to {app_json_path} (Full CSV: {len(all_app_rows)} rows)")
+
 
 def run_pipeline(limit_per_category=None, max_workers=MAX_WORKERS):
     """
