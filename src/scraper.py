@@ -303,6 +303,15 @@ def export_data_files(conn, output_dir, days_window=30):
             'st': r['status'] or 'Scheduled',
             'pr': r['proc'] or '',
             'ic': r['ic'] or '',
+            'cs': r['counsel'] or '',
+            'rsn': r['rsn'] or '',
+            'loc': r['location_of_offence'] or '',
+            'pl': r['plea'] or '',
+            'el': r['elec'] or '',
+            'ag': r['age'] or '',
+            'vc': r['vc'] or '',
+            'li': r['lesser_included'] or '',
+            'af': r['agency_file'] or '',
             'na': r['next_appearance'] or ''
         })
     archive_json_path = os.path.join(output_dir, "archive_index.json")

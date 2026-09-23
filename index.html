@@ -17,12 +17,16 @@
     .table th { background-color: #f1f5f9; font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px; }
     .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.85rem; }
     .court-tag { font-size: 0.75rem; border-radius: 4px; padding: 2px 6px; }
-    .btn-track { border: none; background: transparent; padding: 2px 5px; color: #94a3b8; transition: color 0.15s ease; }
+    .btn-track { border: none; background: transparent; padding: 2px 4px; color: #94a3b8; transition: color 0.15s ease; }
     .btn-track:hover, .btn-track.active { color: #f59e0b; }
-    .btn-share { border: none; background: transparent; padding: 2px 5px; color: #94a3b8; transition: color 0.15s ease; }
+    .btn-share { border: none; background: transparent; padding: 2px 4px; color: #94a3b8; transition: color 0.15s ease; }
     .btn-share:hover { color: #2563eb; }
+    .btn-details { border: none; background: transparent; padding: 2px 4px; color: #64748b; transition: color 0.15s ease; }
+    .btn-details:hover { color: #0f172a; }
     .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1060; }
     .archive-banner { background-color: #e0f2fe; border-left: 4px solid #0284c7; }
+    .field-label { font-size: 0.75rem; text-transform: uppercase; font-weight: 600; color: #64748b; letter-spacing: 0.5px; }
+    .field-value { font-size: 0.95rem; color: #0f172a; }
   </style>
 </head>
 <body>
@@ -69,7 +73,7 @@
   <div class="card card-filter mb-4 p-3 bg-white">
     <div class="row g-2 align-items-end">
       <div class="col-md-3">
-        <label class="form-label small fw-semibold text-secondary">Search (Name, File #, Charge)</label>
+        <label class="form-label small fw-semibold text-secondary">Search (Name, File #, Counsel, Charge)</label>
         <div class="input-group input-group-sm">
           <span class="input-group-text"><i class="bi bi-search"></i></span>
           <input type="text" id="searchInput" class="form-control" placeholder="Search keywords..." oninput="onSearchInput()">
@@ -146,7 +150,7 @@
       </thead>
       <tbody id="tableBody">
         <tr>
-          <td colspan="14" class="text-center py-4 text-muted">Loading court records...</td>
+          <td colspan="15" class="text-center py-4 text-muted">Loading court records...</td>
         </tr>
       </tbody>
     </table>
@@ -158,6 +162,32 @@
     <div class="btn-group btn-group-sm">
       <button class="btn btn-outline-secondary" id="prevPageBtn" onclick="changePage(-1)">Previous</button>
       <button class="btn btn-outline-secondary" id="nextPageBtn" onclick="changePage(1)">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- Case Details Modal -->
+<div class="modal fade" id="caseDetailModal" tabindex="-1" aria-labelledby="caseDetailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-light">
+        <h5 class="modal-title" id="caseDetailModalLabel">
+          <i class="bi bi-folder2-open me-2 text-primary"></i>Case Appearance Details
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4" id="caseDetailModalBody">
+        <!-- Populated dynamically -->
+      </div>
+      <div class="modal-footer bg-light">
+        <button type="button" class="btn btn-sm btn-outline-primary" id="modalCopyBtn">
+          <i class="bi bi-link-45deg me-1"></i>Copy Shareable Link
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-warning text-dark" id="modalTrackBtn">
+          <i class="bi bi-star me-1"></i>Track Case
+        </button>
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
     </div>
   </div>
 </div>
@@ -188,10 +218,12 @@
             <ul class="list-group list-group-flush mb-3">
               <li class="list-group-item"><strong>Rm:</strong> Courtroom number</li>
               <li class="list-group-item"><strong>File Number:</strong> Court file registry number</li>
-              <li class="list-group-item"><strong>Proc (Bail Process):</strong> Bail status (WAR = Warrant, UTP = Undertaking, SUM = Summons)</li>
+              <li class="list-group-item"><strong>Bail Proc:</strong> Bail status or process (e.g. WAR = Warrant, UTP = Undertaking, SUM = Summons)</li>
               <li class="list-group-item"><strong>I/C:</strong> In Custody status (Y = In Custody, N = Out of Custody)</li>
+              <li class="list-group-item"><strong>Counsel:</strong> Accused lawyer or attending Judge/Justice</li>
+              <li class="list-group-item"><strong>Rsn:</strong> Purpose/Reason (FA = First Appearance, PAR = Pre-Trial, SNT = Sentence, FXD = Fix Date)</li>
               <li class="list-group-item"><strong>Cnt:</strong> Count / charge sequence number</li>
-              <li class="list-group-item"><strong>Rsn:</strong> Purpose/Reason (FA = First Appearance, PAR = Pre-Trial, SNT = Sentence)</li>
+              <li class="list-group-item"><strong>Age:</strong> Age of file (in days)</li>
             </ul>
           </div>
           <div class="col-md-6">
@@ -201,6 +233,7 @@
               <li class="list-group-item"><strong>Disposition:</strong> Final result: SOP = Stay of Proceedings, APG = Admitted Guilty, PNI = Not Guilty plea</li>
               <li class="list-group-item"><strong>V/C:</strong> By Videoconference (CON = Video link, ACC = Accused on video)</li>
               <li class="list-group-item"><strong>Agency File:</strong> Police agency code and investigation incident number</li>
+              <li class="list-group-item"><strong>Elec:</strong> Election of trial mode (Judge alone / Judge & Jury)</li>
             </ul>
           </div>
         </div>
@@ -224,6 +257,43 @@
 
   // Tracked Cases stored in LocalStorage
   let trackedFiles = new Set(JSON.parse(localStorage.getItem('tracked_court_files') || '[]'));
+
+  // Acronym Decoders
+  const PROCESS_CODES = {
+    'AN': 'Appearance Notice',
+    'AWW': 'Arrest Warrant Withdrawn',
+    'DO': 'Detention Order',
+    'POA': 'Promise to Appear',
+    'ROD': 'Release Order with Financial Condition',
+    'RON': 'Release Order without Financial Condition',
+    'ROS': 'Release Order with Surety',
+    'ROW': 'Release Order with Warrant',
+    'SUM': 'Summons',
+    'UTP': 'Undertaking to Appear',
+    'WAR': 'Warrant of Arrest',
+    'PPA': 'Personally Promising to Appear'
+  };
+
+  const REASON_CODES = {
+    'FA': 'First Appearance',
+    'PAR': 'Pre-Trial Appearance',
+    'FXD': 'Fix Date',
+    'SNT': 'Sentencing Hearing',
+    'CNT': 'Continuation',
+    'CLC': 'Consult Legal Counsel',
+    'CWI': 'Consult with Intake',
+    'APP': 'Appearance',
+    'HR': 'Hearing',
+    'CMC': 'Case Management Conference',
+    'PTC': 'Pre-Trial Conference',
+    'FTJ': 'Fix Trial Judge'
+  };
+
+  const RESULT_CODES = {
+    'IBJ': 'In Between Judgment (Adjourned)',
+    'END': 'Concluded / Ended',
+    'IBD': 'Adjourned for Decision'
+  };
 
   function showToast(msg) {
     document.getElementById('toastMessage').innerText = msg;
@@ -266,6 +336,121 @@
     document.getElementById('watchlistCount').innerText = trackedFiles.size.toString();
   }
 
+  function openCaseDetails(index) {
+    const r = filteredData[index];
+    if (!r) return;
+
+    const procFull = PROCESS_CODES[r.proc] ? `${r.proc} (${PROCESS_CODES[r.proc]})` : (r.proc || 'None');
+    const rsnFull = REASON_CODES[r.rsn] ? `${r.rsn} (${REASON_CODES[r.rsn]})` : (r.rsn || 'Not Specified');
+    const rsltFull = RESULT_CODES[r.result] ? `${r.result} (${RESULT_CODES[r.result]})` : (r.result || 'None');
+    const isTracked = trackedFiles.has(r.file_number);
+
+    let html = `
+      <div class="row g-3">
+        <div class="col-md-6 border-end">
+          <div class="mb-3">
+            <span class="field-label">File Number</span>
+            <div class="field-value fw-bold fs-5 text-primary mono">${r.file_number || '-'}</div>
+          </div>
+          <div class="mb-3">
+            <span class="field-label">Accused / Case Parties</span>
+            <div class="field-value fw-semibold">${r.name || '-'}</div>
+          </div>
+          <div class="mb-3">
+            <span class="field-label">Courthouse & Room</span>
+            <div class="field-value"><span class="badge bg-light text-dark border court-tag">${r.court_level || 'Court'}</span> ${r.court_name || '-'} &bull; Room <strong>${r.room || '-'}</strong></div>
+          </div>
+          <div class="mb-3">
+            <span class="field-label">Appearance Date & Time</span>
+            <div class="field-value">${r.court_date || '-'} &bull; ${r.session_time || 'Session Commencing Time'}</div>
+          </div>
+          <div class="mb-3">
+            <span class="field-label">Defense Counsel / Judge</span>
+            <div class="field-value">${r.counsel || '<span class=\"text-muted\">None on file</span>'}</div>
+          </div>
+          <div class="mb-3">
+            <span class="field-label">Appearance Purpose / Reason (Rsn)</span>
+            <div class="field-value">${rsnFull}</div>
+          </div>
+          <div class="mb-3">
+            <span class="field-label">Offence Location</span>
+            <div class="field-value">${r.location_of_offence || '<span class=\"text-muted\">Unspecified</span>'}</div>
+          </div>
+        </div>
+
+        <div class="col-md-6 ps-md-4">
+          <div class="mb-3">
+            <span class="field-label">Charge / Statute Section (Count ${r.cnt || '001'})</span>
+            <div class="field-value p-2 rounded bg-light border">${r.charge_description || '-'}</div>
+          </div>
+          ${r.lesser_included ? `
+          <div class="mb-3">
+            <span class="field-label">Lesser Included Offence</span>
+            <div class="field-value small">${r.lesser_included}</div>
+          </div>` : ''}
+          <div class="row mb-3">
+            <div class="col-6">
+              <span class="field-label">Bail Process (Proc)</span>
+              <div class="field-value">${procFull}</div>
+            </div>
+            <div class="col-6">
+              <span class="field-label">In Custody (I/C)</span>
+              <div class="field-value">${r.ic === 'Y' ? '<span class=\"badge bg-danger\">Yes (In Custody)</span>' : (r.ic === 'N' ? '<span class=\"badge bg-secondary\">No (Out of Custody)</span>' : '-')}</div>
+            </div>
+          </div>
+          <div class="row mb-3">
+            <div class="col-4">
+              <span class="field-label">Plea</span>
+              <div class="field-value">${r.plea || '-'}</div>
+            </div>
+            <div class="col-4">
+              <span class="field-label">Election</span>
+              <div class="field-value">${r.elec || '-'}</div>
+            </div>
+            <div class="col-4">
+              <span class="field-label">File Age</span>
+              <div class="field-value">${r.age ? r.age + ' days' : '-'}</div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <span class="field-label">Appearance Result (Rslt)</span>
+            <div class="field-value">${rsltFull}</div>
+          </div>
+          <div class="mb-3">
+            <span class="field-label">Disposition / Outcome</span>
+            <div class="field-value fw-semibold text-danger">${r.disposition || '<span class=\"text-muted fw-normal\">Pending / In Progress</span>'}</div>
+          </div>
+          ${r.next_appearance ? `
+          <div class="mb-3">
+            <span class="field-label">Next Scheduled Appearance</span>
+            <div class="field-value p-2 rounded bg-light border small">${r.next_appearance}</div>
+          </div>` : ''}
+          <div class="row">
+            <div class="col-6">
+              <span class="field-label">Police Agency File #</span>
+              <div class="field-value small mono">${r.agency_file || '-'}</div>
+            </div>
+            <div class="col-6">
+              <span class="field-label">Videoconference (V/C)</span>
+              <div class="field-value small">${r.vc || 'In Person'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('caseDetailModalBody').innerHTML = html;
+    document.getElementById('modalCopyBtn').onclick = () => copyCaseLink(r.file_number);
+    document.getElementById('modalTrackBtn').innerHTML = `<i class="bi ${isTracked ? 'bi-star-fill text-warning' : 'bi-star'} me-1"></i>${isTracked ? 'Untrack Case' : 'Track Case'}`;
+    document.getElementById('modalTrackBtn').onclick = () => {
+      toggleTrackCase(r.file_number);
+      openCaseDetails(index);
+    };
+
+    const modal = new bootstrap.Modal(document.getElementById('caseDetailModal'));
+    modal.show();
+  }
+
   async function loadArchiveData() {
     if (archiveData !== null) return archiveData;
     showToast("Loading full historical archive index...");
@@ -289,6 +474,15 @@
           status: r.st,
           proc: r.pr,
           ic: r.ic,
+          counsel: r.cs,
+          rsn: r.rsn,
+          location_of_offence: r.loc,
+          plea: r.pl,
+          elec: r.el,
+          age: r.ag,
+          vc: r.vc,
+          lesser_included: r.li,
+          agency_file: r.af,
           next_appearance: r.na
         }));
         document.getElementById('archiveCount').innerText = archiveData.length.toLocaleString();
@@ -351,7 +545,7 @@
       switchDataset('daily');
     } catch (err) {
       console.error('Error loading datasets:', err);
-      document.getElementById('tableBody').innerHTML = `<tr><td colspan="14" class="text-center text-danger py-4">Error loading data files. Please run the scraper pipeline.</td></tr>`;
+      document.getElementById('tableBody').innerHTML = `<tr><td colspan="15" class="text-center text-danger py-4">Error loading data files. Please run the scraper pipeline.</td></tr>`;
     }
   }
 
@@ -405,7 +599,7 @@
     document.getElementById('statusFilterContainer').style.display = isDaily ? 'block' : 'none';
 
     if (type === 'archive' && archiveData === null) {
-      document.getElementById('tableBody').innerHTML = `<tr><td colspan="14" class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm text-primary me-2"></div> Loading complete historical archive index...</td></tr>`;
+      document.getElementById('tableBody').innerHTML = `<tr><td colspan="15" class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm text-primary me-2"></div> Loading complete historical archive index...</td></tr>`;
       await loadArchiveData();
     }
 
@@ -417,20 +611,21 @@
     const head = document.getElementById('tableHead');
     head.innerHTML = `
       <tr>
-        <th style="width: 75px;">Actions</th>
+        <th style="width: 85px;">Actions</th>
         <th>Date</th>
         <th>Court</th>
         <th>Rm</th>
         <th>Time</th>
         <th>File Number</th>
         <th>Name</th>
-        <th>Proc</th>
+        <th>Counsel</th>
+        <th>Bail Proc</th>
         <th>I/C</th>
+        <th>Rsn</th>
         <th>Cnt</th>
         <th>Charge</th>
         <th>${currentDataset === 'advance' ? 'Offence Location' : 'Result / Next'}</th>
-        <th>${currentDataset === 'advance' ? 'Counsel' : 'Disposition'}</th>
-        <th>Status</th>
+        <th>${currentDataset === 'advance' ? 'Status' : 'Disposition'}</th>
       </tr>
     `;
   }
@@ -461,7 +656,7 @@
       if (courtDate && !(r.court_date || '').toLowerCase().includes(courtDate)) return false;
 
       if (query) {
-        const textBlob = `${r.file_number || ''} ${r.name || ''} ${r.charge_description || ''} ${r.counsel || ''} ${r.disposition || ''}`.toLowerCase();
+        const textBlob = `${r.file_number || ''} ${r.name || ''} ${r.charge_description || ''} ${r.counsel || ''} ${r.disposition || ''} ${r.proc || ''} ${r.rsn || ''}`.toLowerCase();
         if (!textBlob.includes(query)) return false;
       }
       return true;
@@ -486,12 +681,12 @@
 
     if (total === 0) {
       if (currentDataset === 'watchlist' && trackedFiles.size === 0) {
-        tbody.innerHTML = `<tr><td colspan="14" class="text-center py-5 text-muted">
+        tbody.innerHTML = `<tr><td colspan="15" class="text-center py-5 text-muted">
           <i class="bi bi-star fs-3 d-block mb-2 text-warning"></i>
           You have no tracked cases yet.<br>Click the <i class="bi bi-star text-warning"></i> icon on any case in the Daily, Advance, or Archive tabs to add it to your watchlist.
         </td></tr>`;
       } else {
-        tbody.innerHTML = `<tr><td colspan="14" class="text-center py-4 text-muted">No records match your filters.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="15" class="text-center py-4 text-muted">No records match your filters.</td></tr>`;
       }
       document.getElementById('pageInfo').innerText = 'Page 0 of 0';
       document.getElementById('prevPageBtn').disabled = true;
@@ -504,7 +699,9 @@
     const pageRecords = filteredData.slice(start, end);
 
     let html = '';
-    for (const r of pageRecords) {
+    for (let i = 0; i < pageRecords.length; i++) {
+      const r = pageRecords[i];
+      const actualIndex = start + i;
       const isTracked = trackedFiles.has(r.file_number);
       const starIcon = isTracked ? 'bi-star-fill text-warning' : 'bi-star text-secondary';
       const badgeClass = r.status === 'Completed' ? 'badge-completed' : (r.status === 'Adjourned' ? 'badge-adjourned' : 'badge-scheduled');
@@ -518,6 +715,9 @@
             <button class="btn-share" onclick="copyCaseLink('${r.file_number}')" title="Copy shareable case link">
               <i class="bi bi-link-45deg"></i>
             </button>
+            <button class="btn-details" onclick="openCaseDetails(${actualIndex})" title="View full case details">
+              <i class="bi bi-eye"></i>
+            </button>
           </td>
           <td class="text-nowrap">${r.court_date || '-'}</td>
           <td class="text-nowrap"><span class="badge bg-light text-dark border court-tag">${r.court_level}</span> ${r.court_name}</td>
@@ -525,8 +725,10 @@
           <td class="text-nowrap">${r.session_time || '-'}</td>
           <td class="mono fw-bold">${r.file_number}</td>
           <td class="fw-semibold">${r.name}</td>
-          <td class="mono small">${r.proc || '-'}</td>
+          <td class="small" style="max-width: 140px;">${r.counsel || '-'}</td>
+          <td class="mono small" title="${PROCESS_CODES[r.proc] || ''}">${r.proc || '-'}</td>
           <td class="mono small">${r.ic || '-'}</td>
+          <td class="mono small" title="${REASON_CODES[r.rsn] || ''}">${r.rsn || '-'}</td>
           <td class="mono small">${r.cnt || '-'}</td>
           <td class="small" style="max-width: 250px;">${r.charge_description || '-'}</td>
           <td class="small">
@@ -536,9 +738,8 @@
             )}
           </td>
           <td class="small ${currentDataset === 'advance' ? '' : 'fw-semibold text-danger'}">
-            ${currentDataset === 'advance' ? (r.counsel || '-') : (r.disposition || '-')}
+            ${currentDataset === 'advance' ? `<span class="badge ${badgeClass}">${r.status || 'Scheduled'}</span>` : (r.disposition || (r.status ? `<span class="badge ${badgeClass}">${r.status}</span>` : '-'))}
           </td>
-          <td><span class="badge ${badgeClass}">${r.status || 'Scheduled'}</span></td>
         </tr>
       `;
     }
