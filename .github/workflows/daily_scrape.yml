@@ -2,9 +2,9 @@ name: Daily Court List Scraper & Update Pipeline
 
 on:
   schedule:
-    # Runs weekday mornings at 14:37 UTC (7:37 AM PDT / 6:37 AM PST)
-    # Using an off-peak minute (37) prevents GitHub scheduling queue delays
-    - cron: '37 14 * * 1-5'
+    # Runs weekdays around 12:00 PM Pacific Time (19:07 UTC)
+    # Using an off-peak minute (07) prevents GitHub scheduling queue delays
+    - cron: '7 19 * * 1-5'
   workflow_dispatch: # Allows manual trigger from GitHub Actions UI
 
 permissions:
