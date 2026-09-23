@@ -284,18 +284,46 @@ def export_data_files(conn, output_dir, days_window=30):
     with open(app_json_path, "w", encoding="utf-8") as f:
         json.dump(recent_app_rows, f, separators=(',', ':'))
 
-    # 4. Sync to docs/data for GitHub Pages hosting
+    # 4. Generate Complete Historical Archive Search Index
+    # Stored compactly for on-demand search across ALL past records
+    archive_rows = []
+    for r in all_app_rows:
+        archive_rows.append({
+            'fn': r['file_number'],
+            'nm': r['name'],
+            'cd': r['court_date'] or '',
+            'cn': r['court_name'],
+            'cl': r['court_level'],
+            'rm': r['room'] or '',
+            'tm': r['session_time'] or '',
+            'cnt': r['cnt'] or '',
+            'ch': r['charge_description'] or '',
+            'rs': r['result'] or '',
+            'dp': r['disposition'] or '',
+            'st': r['status'] or 'Scheduled',
+            'pr': r['proc'] or '',
+            'ic': r['ic'] or '',
+            'na': r['next_appearance'] or ''
+        })
+    archive_json_path = os.path.join(output_dir, "archive_index.json")
+    with open(archive_json_path, "w", encoding="utf-8") as f:
+        json.dump(archive_rows, f, separators=(',', ':'))
+
+    # 5. Sync to docs/data for GitHub Pages hosting
     docs_data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "data")
     if os.path.exists(docs_data_dir):
         shutil.copy2(adv_json_path, os.path.join(docs_data_dir, "advanced_lists.json"))
         if adv_rows:
             shutil.copy2(adv_csv_path, os.path.join(docs_data_dir, "advanced_lists.csv"))
         shutil.copy2(app_json_path, os.path.join(docs_data_dir, "daily_court_lists.json"))
+        shutil.copy2(archive_json_path, os.path.join(docs_data_dir, "archive_index.json"))
         if all_app_rows:
             shutil.copy2(app_csv_path, os.path.join(docs_data_dir, "daily_court_lists.csv"))
 
     logging.info(f"Exported {len(adv_rows)} advanced rows (compact JSON) to {adv_json_path}")
-    logging.info(f"Exported {len(recent_app_rows)} recent appearances ({days_window}-day window) to {app_json_path} (Full CSV: {len(all_app_rows)} rows)")
+    logging.info(f"Exported {len(recent_app_rows)} recent appearances ({days_window}-day window) to {app_json_path}")
+    logging.info(f"Exported {len(archive_rows)} total appearances to archive search index: {archive_json_path}")
+
 
 
 def run_pipeline(limit_per_category=None, max_workers=MAX_WORKERS):

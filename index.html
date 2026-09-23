@@ -21,8 +21,8 @@
     .btn-track:hover, .btn-track.active { color: #f59e0b; }
     .btn-share { border: none; background: transparent; padding: 2px 5px; color: #94a3b8; transition: color 0.15s ease; }
     .btn-share:hover { color: #2563eb; }
-    .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: #2563eb; display: inline-block; margin-right: 8px; }
     .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1060; }
+    .archive-banner { background-color: #e0f2fe; border-left: 4px solid #0284c7; }
   </style>
 </head>
 <body>
@@ -41,7 +41,7 @@
   <ul class="nav nav-pills mb-3" id="datasetTabs" role="tablist">
     <li class="nav-item" role="presentation">
       <button class="nav-link active fw-bold" id="daily-tab" data-bs-toggle="pill" data-bs-target="#tab-daily" type="button" role="tab" onclick="switchDataset('daily')">
-        <i class="bi bi-calendar-event me-1"></i> Daily & Completed Appearances
+        <i class="bi bi-calendar-event me-1"></i> Recent Appearances (30 Days)
         <span class="badge bg-light text-dark ms-1" id="dailyCount">0</span>
       </button>
     </li>
@@ -49,6 +49,12 @@
       <button class="nav-link fw-bold" id="advance-tab" data-bs-toggle="pill" data-bs-target="#tab-advance" type="button" role="tab" onclick="switchDataset('advance')">
         <i class="bi bi-clock-history me-1"></i> Advanced Scheduled (Next 5 Days)
         <span class="badge bg-light text-dark ms-1" id="advanceCount">0</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link fw-bold" id="archive-tab" data-bs-toggle="pill" data-bs-target="#tab-archive" type="button" role="tab" onclick="switchDataset('archive')">
+        <i class="bi bi-archive me-1"></i> Complete Historical Archive
+        <span class="badge bg-light text-dark ms-1" id="archiveCount">Searchable</span>
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -110,6 +116,16 @@
       <i class="bi bi-link-45deg me-1"></i> Viewing shared link for: <strong id="filterBannerText"></strong>
     </div>
     <button class="btn btn-sm btn-link text-decoration-none p-0 text-primary" onclick="clearDeepLink()">Show all cases</button>
+  </div>
+
+  <!-- Archive Search Banner if zero results in 30-day view -->
+  <div id="searchArchivePrompt" class="alert archive-banner py-2 px-3 d-flex justify-content-between align-items-center mb-3 d-none">
+    <div class="small text-dark">
+      <i class="bi bi-info-circle me-1 text-primary"></i> No matching cases found in recent 30-day window.
+    </div>
+    <button class="btn btn-sm btn-primary py-0 px-2" onclick="searchHistoricalArchive()">
+      <i class="bi bi-search me-1"></i>Search Full Historical Archive
+    </button>
   </div>
 
   <!-- Legend quick modal trigger & info -->
@@ -200,6 +216,7 @@
 <script>
   let dailyData = [];
   let advanceData = [];
+  let archiveData = null; // Loaded on-demand when searching historical records
   let currentDataset = 'daily';
   let filteredData = [];
   let currentPage = 1;
@@ -249,6 +266,46 @@
     document.getElementById('watchlistCount').innerText = trackedFiles.size.toString();
   }
 
+  async function loadArchiveData() {
+    if (archiveData !== null) return archiveData;
+    showToast("Loading full historical archive index...");
+    try {
+      const res = await fetch('data/archive_index.json');
+      if (res.ok) {
+        const raw = await res.json();
+        // Unpack compact keys into standard object format
+        archiveData = raw.map(r => ({
+          file_number: r.fn,
+          name: r.nm,
+          court_date: r.cd,
+          court_name: r.cn,
+          court_level: r.cl,
+          room: r.rm,
+          session_time: r.tm,
+          cnt: r.cnt,
+          charge_description: r.ch,
+          result: r.rs,
+          disposition: r.dp,
+          status: r.st,
+          proc: r.pr,
+          ic: r.ic,
+          next_appearance: r.na
+        }));
+        document.getElementById('archiveCount').innerText = archiveData.length.toLocaleString();
+        return archiveData;
+      }
+    } catch (e) {
+      console.error("Error loading archive index:", e);
+      showToast("Error loading historical archive.");
+    }
+    return [];
+  }
+
+  async function searchHistoricalArchive() {
+    await loadArchiveData();
+    switchDataset('archive');
+  }
+
   async function loadData() {
     try {
       const [resDaily, resAdv] = await Promise.all([
@@ -265,7 +322,7 @@
 
       document.getElementById('dailyCount').innerText = dailyData.length.toLocaleString();
       document.getElementById('advanceCount').innerText = advanceData.length.toLocaleString();
-      document.getElementById('lastUpdatedTime').innerText = `Loaded ${dailyData.length + advanceData.length} records`;
+      document.getElementById('lastUpdatedTime').innerText = `Loaded ${dailyData.length} recent + ${advanceData.length} advance appearances`;
       updateWatchlistBadge();
 
       populateCourtFilter();
@@ -279,6 +336,12 @@
         document.getElementById('searchInput').value = fileParam;
         document.getElementById('filterBannerText').innerText = `File #${fileParam}`;
         document.getElementById('filterBanner').classList.remove('d-none');
+        // If file not in recent, automatically load archive
+        const existsRecent = dailyData.some(d => (d.file_number || '').includes(fileParam));
+        if (!existsRecent) {
+          await searchHistoricalArchive();
+          return;
+        }
       } else if (nameParam) {
         document.getElementById('searchInput').value = nameParam;
         document.getElementById('filterBannerText').innerText = `Name: "${nameParam}"`;
@@ -328,17 +391,23 @@
     });
   }
 
-  function switchDataset(type) {
+  async function switchDataset(type) {
     currentDataset = type;
     currentPage = 1;
 
     // Update active tab buttons
     document.getElementById('daily-tab').classList.toggle('active', type === 'daily');
     document.getElementById('advance-tab').classList.toggle('active', type === 'advance');
+    document.getElementById('archive-tab').classList.toggle('active', type === 'archive');
     document.getElementById('watchlist-tab').classList.toggle('active', type === 'watchlist');
 
-    const isDaily = (type === 'daily' || type === 'watchlist');
+    const isDaily = (type === 'daily' || type === 'archive' || type === 'watchlist');
     document.getElementById('statusFilterContainer').style.display = isDaily ? 'block' : 'none';
+
+    if (type === 'archive' && archiveData === null) {
+      document.getElementById('tableBody').innerHTML = `<tr><td colspan="14" class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm text-primary me-2"></div> Loading complete historical archive index...</td></tr>`;
+      await loadArchiveData();
+    }
 
     renderTableHeader();
     applyFilters();
@@ -378,9 +447,11 @@
       data = dailyData;
     } else if (currentDataset === 'advance') {
       data = advanceData;
+    } else if (currentDataset === 'archive') {
+      data = archiveData || [];
     } else if (currentDataset === 'watchlist') {
-      // Merge all appearances that match tracked files
-      data = [...dailyData, ...advanceData].filter(r => trackedFiles.has(r.file_number));
+      const allAvailable = archiveData ? [...archiveData, ...advanceData] : [...dailyData, ...advanceData];
+      data = allAvailable.filter(r => trackedFiles.has(r.file_number));
     }
 
     filteredData = data.filter(r => {
@@ -396,6 +467,14 @@
       return true;
     });
 
+    // Check if we should prompt the user to search the historical archive
+    const archivePrompt = document.getElementById('searchArchivePrompt');
+    if (currentDataset === 'daily' && query && filteredData.length === 0) {
+      archivePrompt.classList.remove('d-none');
+    } else {
+      archivePrompt.classList.add('d-none');
+    }
+
     currentPage = 1;
     renderTable();
   }
@@ -409,7 +488,7 @@
       if (currentDataset === 'watchlist' && trackedFiles.size === 0) {
         tbody.innerHTML = `<tr><td colspan="14" class="text-center py-5 text-muted">
           <i class="bi bi-star fs-3 d-block mb-2 text-warning"></i>
-          You have no tracked cases yet.<br>Click the <i class="bi bi-star text-warning"></i> icon on any case in the Daily or Advance tabs to add it to your watchlist.
+          You have no tracked cases yet.<br>Click the <i class="bi bi-star text-warning"></i> icon on any case in the Daily, Advance, or Archive tabs to add it to your watchlist.
         </td></tr>`;
       } else {
         tbody.innerHTML = `<tr><td colspan="14" class="text-center py-4 text-muted">No records match your filters.</td></tr>`;
